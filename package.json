@@ -1,0 +1,16 @@
+{
+  "name": "framework-libdragon",
+  "version": "1.00001.0",
+  "description": " Open source library for N64 development.",
+  "keywords": [
+    "framework",
+    "libdragon",
+    "MIPS",
+    "N64"
+  ],
+  "homepage": "https://libdragon.dev/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DragonMinded/libdragon.git"
+  }
+}
