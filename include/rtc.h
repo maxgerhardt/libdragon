@@ -8,7 +8,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <sys/types.h>
+#include <time.h>
 
 /**
  * @defgroup rtc Real-Time Clock Subsystem
@@ -63,10 +63,9 @@
  * @{
  */
 
-/** @brief RTC minimum timestamp (1996-01-01 00:00:00) */
-#define RTC_TIMESTAMP_MIN 820454400
-/** @brief RTC maximum timestamp (2095-12-31 23:59:59) */
-#define RTC_TIMESTAMP_MAX 3976214399
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /** @brief RTC source values. */
 typedef enum {
@@ -74,15 +73,39 @@ typedef enum {
     RTC_SOURCE_NONE = 0,
     /** @brief Joybus RTC source */
     RTC_SOURCE_JOYBUS = 1,
-    /** @brief 64DD RTC source (Not implemented yet) */
+    /** @brief 64DD RTC source */
     RTC_SOURCE_DD = 2,
-    /** @brief iQue RTC source (Not implemented yet) */
+    /** @brief iQue/BBPlayer RTC source */
     RTC_SOURCE_BB = 3,
 } rtc_source_t;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+/**
+ * @name RTC error codes
+ * @{
+ */
+/** @brief RTC Operation successful */
+#define RTC_ESUCCESS   0
+/** @brief RTC source in unavailable. */
+#define RTC_ENOCLOCK  -1
+/** @brief RTC source is not operational. */
+#define RTC_EBADCLOCK -2
+/** @brief RTC clock time is not representable.  */
+#define RTC_EBADTIME  -3
+/** @} */
+
+/** @brief Get the string representation of an RTC error code. */
+const char *rtc_error_str( int error );
+
+/** @brief Software RTC minimum timestamp (1970-01-01 00:00:00) */
+#define RTC_SOFT_TIMESTAMP_MIN 0
+/** @brief Software RTC maximum timestamp (2099-12-31 23:59:59) */
+#define RTC_SOFT_TIMESTAMP_MAX 4102444799
+
+/** @brief Structure representing an RTC timestamp range. */
+typedef struct {
+    time_t min; ///< Minimum timestamp
+    time_t max; ///< Maximum timestamp
+} rtc_range_t;
 
 /**
  * @brief Initialize the RTC subsystem asynchronously.
@@ -96,7 +119,7 @@ extern "C" {
  * This will also hook the RTC into the newlib gettimeofday and settimeofday
  * functions, so you will be able to use the ISO C time functions.
  *
- * This operation may take up to 50 milliseconds to complete, but does not
+ * This operation may take up to 5 milliseconds to complete, but does not
  * block the CPU while detecting and initializing the RTC hardware.
  *
  * Use #rtc_get_source to determine if a hardware RTC source was detected.
@@ -115,7 +138,7 @@ void rtc_init_async( void );
  * This will also hook the RTC into the newlib gettimeofday and settimeofday
  * functions, so you will be able to use the ISO C time functions.
  *
- * This operation may take up to 50 milliseconds to complete.
+ * This operation may take up to 5 milliseconds to complete.
  *
  * @return whether any supported hardware RTC source was initialized
  */
@@ -144,9 +167,48 @@ rtc_source_t rtc_get_source( void );
  *
  * This function will automatically resynchronize the time with the new clock.
  *
- * @return whether the new source clock was successfully selected
+ * @retval RTC_ESUCCESS if the source was successfully set
+ * @retval RTC_ENOCLOCK if the source is not available
+ * @retval RTC_EBADCLOCK if the source is not operational
  */
-bool rtc_set_source( rtc_source_t source );
+int rtc_set_source( rtc_source_t source );
+
+/**
+ * @brief Get the supported timestamp range for the given RTC source.
+ *
+ * @param source the RTC source to check
+ *
+ * @return the supported timestamp range for the source
+ */
+rtc_range_t rtc_get_source_supported_range( rtc_source_t source );
+
+/**
+ * @brief Get the supported timestamp range for the current RTC source.
+ *
+ * @return the supported timestamp range for the current source clock
+ */
+rtc_range_t rtc_get_supported_range( void );
+
+/**
+ * @brief Determine whether a specific clock source supports persistent
+ * writing of the time.
+ *
+ * Some emulators and flash carts do not support writing to the RTC, so
+ * this function makes an attempt to detect silent write failures and will
+ * return `false` if it is unable to change the time on the RTC.
+ *
+ * This function is useful if your program wants to conditionally offer the
+ * ability to set the time based on hardware/emulator support.
+ *
+ * Unfortunately this operation may introduce a slight drift in the clock,
+ * but it is the only reliable way to determine if the RTC actually persists
+ * the time.
+ *
+ * @param source the RTC source to check
+ *
+ * @return whether RTC write persistence appears to be supported for the source
+ */
+bool rtc_is_source_persistent( rtc_source_t source );
 
 /**
  * @brief Determine whether the RTC supports persistent writing of the time.

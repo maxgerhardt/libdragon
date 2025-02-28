@@ -27,7 +27,6 @@ int main(void)
     timer_init();
 
     rtc_init();
-    bool persistent = rtc_is_persistent();
 
     while(1)
     {
@@ -35,7 +34,7 @@ int main(void)
         {
             /* Read the current timestamp from RTC subsystem */
             time_t now = time( NULL );
-            /* Convert the timestamp into date/time */
+            /* Convert the timestamp into date/time struct */
             rtc_tm = *gmtime( &now );
         }
 
@@ -79,10 +78,38 @@ int main(void)
         graphics_draw_text( disp, 0, LINE4, line4_text );
 
         /* Line 5 */
-        if( !persistent )
+        graphics_set_color( WHITE, BLACK );
+        if( !rtc_is_persistent() )
         {
-            graphics_set_color( WHITE, BLACK );
             graphics_draw_text( disp, 0, LINE5, NOWRITE_MESSAGE );
+        }
+        else if( rtc_get_source() == RTC_SOURCE_JOYBUS && rtc_is_source_available( RTC_SOURCE_DD ) )
+        {
+            graphics_draw_text( disp, 0, LINE5, SRC_DD_MESSAGE );
+        }
+        else if( rtc_get_source() == RTC_SOURCE_DD && rtc_is_source_available( RTC_SOURCE_JOYBUS ) )
+        {
+            graphics_draw_text( disp, 0, LINE5, SRC_JOY_MESSAGE );
+        }
+
+        if( sys_bbplayer() )
+        {
+            // TODO: Remove BBPlayer RTC internal API usage for debugging
+            int bb_rtc_get_state( void *state, uint64_t *raw );
+            int bb_rtc_get_time( time_t *out );
+
+            uint64_t bb_state = 0;
+            time_t bb_time = 0;
+            int bb_result;
+            char line_buf[41];
+
+            bb_result = bb_rtc_get_state( NULL, &bb_state );
+            sprintf( line_buf, " %016llx %21s", bb_state, rtc_error_str( bb_result ) );
+            graphics_draw_text( disp, 0, LINE6, line_buf );
+
+            bb_result = bb_rtc_get_time( &bb_time );
+            sprintf( line_buf, " %016lld %21s", bb_time, rtc_error_str( bb_result ) );
+            graphics_draw_text( disp, 0, LINE7, line_buf );
         }
 
         display_show(disp);
@@ -107,15 +134,22 @@ int main(void)
             }
         }
 
-        if( !edit_mode && pad_pressed.b )
-        {
-            persistent = rtc_is_persistent();
-        }
-
         if( !edit_mode && pad_pressed.r )
         {
-            /* Resync the time from the hardware RTC */
-            rtc_set_source( RTC_SOURCE_JOYBUS );
+            /* Resync the time from the RTC source */
+            rtc_set_source( rtc_get_source() );
+        }
+
+        if( !edit_mode && pad_pressed.l )
+        {
+            if( rtc_get_source() == RTC_SOURCE_JOYBUS )
+            {
+                rtc_set_source( RTC_SOURCE_DD );
+            }
+            else if( rtc_get_source() == RTC_SOURCE_DD )
+            {
+                rtc_set_source( RTC_SOURCE_JOYBUS );
+            }
         }
 
         if( edit_mode )
@@ -157,10 +191,14 @@ static void set_edit_color( uint16_t edit_mode_mask )
 
 static void adjust_rtc_time( struct tm * t, int incr )
 {
+    rtc_range_t rtc_range = rtc_get_supported_range();
+    int year_min = TIMESTAMP_TO_YEAR(rtc_range.min);
+    int year_max = TIMESTAMP_TO_YEAR(rtc_range.max + 1) - 1;
+
     switch( edit_mode )
     {
         case EDIT_YEAR:
-            t->tm_year = WRAP( t->tm_year + incr, YEAR_MIN - 1900, YEAR_MAX - 1900 );
+            t->tm_year = WRAP( t->tm_year + incr, year_min - 1900, year_max - 1900 );
             break;
         case EDIT_MONTH:
             t->tm_mon = WRAP( t->tm_mon + incr, 0, 11 );
@@ -185,6 +223,10 @@ static void adjust_rtc_time( struct tm * t, int incr )
 
 static void draw_rtc_time( void )
 {
+    rtc_range_t rtc_range = rtc_get_supported_range();
+    int year_min = TIMESTAMP_TO_YEAR(rtc_range.min);
+    int year_max = TIMESTAMP_TO_YEAR(rtc_range.max + 1) - 1;
+
     char year[sizeof("YYYY")];
     char month[sizeof("MM")];
     char day[sizeof("DD")];
@@ -194,7 +236,7 @@ static void draw_rtc_time( void )
     char sec[sizeof("SS")];
 
     /* Format RTC date/time as strings */
-    sprintf( year, "%04d", CLAMP(rtc_tm.tm_year + 1900, YEAR_MIN, YEAR_MAX) );
+    sprintf( year, "%04d", CLAMP(rtc_tm.tm_year + 1900, year_min, year_max) );
     sprintf( month, "%02d", CLAMP(rtc_tm.tm_mon + 1, 1, 12) );
     sprintf( day, "%02d", CLAMP(rtc_tm.tm_mday, 1, 31) );
     dow = DAYS_OF_WEEK[CLAMP(rtc_tm.tm_wday, 0, 6)];
