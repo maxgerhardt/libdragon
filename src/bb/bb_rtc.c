@@ -143,7 +143,7 @@ int bb_rtc_set_state( bb_rtc_state_t *state )
         return RTC_ENOCLOCK;
     }
 
-    uint8_t bytes[8];
+    uint8_t bytes[8] = {0};
 
     bytes[0] = bcd_encode(state->secs);
     bytes[1] = bcd_encode(state->mins);
